@@ -36,9 +36,9 @@ npm install @prisma/adapter-mysql2 mysql2  # if MySQL/MariaDB
 
 | Folder/File | Contents | Purpose |
 |---|---|---|
-| `templates/prisma/prisma.service.ts` | `PrismaService` | Extends `PrismaClient`, wires the chosen driver adapter, connects on `onModuleInit` |
-| `templates/prisma/prisma.module.ts` | `PrismaModule` | Exposes `PrismaService` for dependency injection across your app |
-| `generate.js` | CLI entrypoint | Interactive prompts, installs deps, patches `schema.prisma`, injects files, registers module |
+| `prisma.service.ts` | `PrismaService` | Extends `PrismaClient`, wires the chosen driver adapter, connects on `onModuleInit` |
+| `prisma.module.ts` | `PrismaModule` | Exposes `PrismaService` for dependency injection across your app |
+| `index.js` | CLI entrypoint | Interactive prompts, installs deps, patches `schema.prisma`, injects files, registers module |
 
 ## Quick Start
 
