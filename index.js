@@ -54,6 +54,15 @@ async function generatePrismaInteractive() {
         },
         {
             type: 'list',
+            name: 'generatorType',
+            message: 'Select the Prisma Client generator:',
+            choices: [
+                { name: '⚡ prisma-client (Rust-free, TS+WASM engine, recommended)', value: 'rust-free' },
+                { name: '📦 prisma-client-js (Legacy, node_modules output)', value: 'legacy' },
+            ],
+        },
+        {
+            type: 'list',
             name: 'database',
             message: 'Choose your database provider:',
             choices: [
@@ -71,6 +80,10 @@ async function generatePrismaInteractive() {
 
     const prismaVersion = answers.version;
     const dbChoice = answers.database;
+    const isRustFree = answers.generatorType === 'rust-free';
+
+    // src/prisma/prisma.service.ts -> ../../generated/prisma/client
+    const generatedClientImportPath = '../../generated/prisma/client';
 
     let mainDeps = `@prisma/client@${prismaVersion}`;
     let devDeps = `prisma@${prismaVersion}`;
@@ -118,26 +131,38 @@ async function generatePrismaInteractive() {
                 let schemaContent = await fs.readFile(schemaPath, 'utf8');
                 const original = schemaContent;
 
-                schemaContent = schemaContent.replace(
-                    /provider\s*=\s*"prisma-client"/,
-                    'provider = "prisma-client-js"',
-                );
+                if (isRustFree) {
+                    schemaContent = schemaContent.replace(
+                        /generator\s+client\s*\{[^}]*\}/,
+                        `generator client {\n  provider     = "prisma-client"\n  output       = "../generated/prisma"\n  moduleFormat = "cjs"\n}`,
+                    );
 
-                schemaContent = schemaContent.replace(
-                    /output\s*=\s*".*?"/g,
-                    '// Output is set to default node_modules location for NestJS global access',
-                );
+                    schemaContent = schemaContent.replace(
+                        /url\s*=\s*env\("DATABASE_URL"\)/g,
+                        '// URL connection is managed natively via Driver Adapter in prisma.service.ts',
+                    );
+                } else {
+                    schemaContent = schemaContent.replace(
+                        /provider\s*=\s*"prisma-client"/,
+                        'provider = "prisma-client-js"',
+                    );
 
-                schemaContent = schemaContent.replace(
-                    /url\s*=\s*env\("DATABASE_URL"\)/g,
-                    '// URL connection is managed natively via Driver Adapter in prisma.service.ts',
-                );
+                    schemaContent = schemaContent.replace(
+                        /output\s*=\s*".*?"/g,
+                        '// Output is set to default node_modules location for NestJS global access',
+                    );
+
+                    schemaContent = schemaContent.replace(
+                        /url\s*=\s*env\("DATABASE_URL"\)/g,
+                        '// URL connection is managed natively via Driver Adapter in prisma.service.ts',
+                    );
+                }
 
                 if (schemaContent === original) {
                     log('yellow', '⚠️ [Warning] schema.prisma pattern not found — file left unmodified. Please review it manually.');
                 } else {
                     await fs.writeFile(schemaPath, schemaContent, 'utf8');
-                    log('green', '✅ [Success] schema.prisma automatically optimized for Prisma 7 architecture!');
+                    log('green', `✅ [Success] schema.prisma automatically optimized for ${isRustFree ? 'Prisma 7 rust-free' : 'Prisma 7 legacy'} architecture!`);
                 }
             } else {
                 log('yellow', '⚠️ [Warning] schema.prisma not found after "prisma init" — skipping schema patch.');
@@ -165,7 +190,9 @@ async function generatePrismaInteractive() {
                 .replaceAll('__ADAPTER_IMPORT__', adapterImports.import)
                 .replaceAll('__ADAPTER_CLASS__', adapterImports.class)
                 .replaceAll('__POOL_IMPORT__', adapterImports.poolImport)
-                .replaceAll('__POOL_CLASS__', adapterImports.poolClass);
+                .replaceAll('__POOL_CLASS__', adapterImports.poolClass)
+                // __CLIENT_IMPORT_PATH__ -> '@prisma/client' (legacy) atau relative path (rust-free)
+                .replaceAll('__CLIENT_IMPORT_PATH__', isRustFree ? generatedClientImportPath : '@prisma/client');
 
             await fs.writeFile(serviceTargetPath, serviceContent, 'utf8');
             await fs.copy(path.join(sourceDir, 'prisma.module.ts'), moduleTargetPath);
@@ -211,6 +238,49 @@ async function generatePrismaInteractive() {
         } catch (err) {
             log('yellow', '⚠️ "prisma generate" post-hook delayed. Please configure your .env DATABASE_URL string first, then run "npx prisma generate" manually.');
         }
+    }
+
+    // ── [6/6] Patch tsconfig.json paths (rust-free only) ───────
+    if (isRustFree) {
+        const tsconfigPath = path.join(process.cwd(), 'tsconfig.json');
+        try {
+            log('cyan', '🧩 [6/6] Patching tsconfig.json to support bare-path import for generated client...');
+
+            if (fs.existsSync(tsconfigPath)) {
+                const raw = await fs.readFile(tsconfigPath, 'utf8');
+                let tsconfig;
+                try {
+                    tsconfig = JSON.parse(raw);
+                } catch (parseErr) {
+                    log('yellow', '⚠️ [Skip] tsconfig.json could not be parsed (likely has comments) — skipping auto-patch. Add paths manually:');
+                    console.log(`    "baseUrl": "./",\n    "paths": {\n      "generated/prisma/client": ["generated/prisma/client.ts"],\n      "generated/prisma/*": ["generated/prisma/*"]\n    }`);
+                    tsconfig = null;
+                }
+
+                if (tsconfig) {
+                    tsconfig.compilerOptions = tsconfig.compilerOptions || {};
+                    tsconfig.compilerOptions.baseUrl = tsconfig.compilerOptions.baseUrl || './';
+                    tsconfig.compilerOptions.paths = {
+                        ...(tsconfig.compilerOptions.paths || {}),
+                        'generated/prisma/client': ['generated/prisma/client.ts'],
+                        'generated/prisma/*': ['generated/prisma/*'],
+                    };
+
+                    await fs.writeFile(tsconfigPath, JSON.stringify(tsconfig, null, 2), 'utf8');
+                    log('green', '✅ [Success] tsconfig.json patched with baseUrl + paths mapping.');
+                    log('yellow', '⚠️ [Reminder] If "moduleResolution" is "nodenext"/"node16", "paths" only affects type-checking, not runtime.');
+                    log('yellow', '⚠️ Make sure "tsconfig-paths" is registered at runtime, or prefer relative imports if issues persist.');
+                }
+            } else {
+                log('yellow', '⚠️ [Skip] tsconfig.json not found — skipping paths patch.');
+            }
+        } catch (err) {
+            log('yellow', '⚠️ [Warning] Failed to patch tsconfig.json paths. Please add manually.');
+        }
+
+        log('yellow', '\n📌 [Note] Rust-free mode active: generated client lives at "generated/prisma".');
+        log('yellow', '📌 Add "generated/" to your .gitignore, and import types via:');
+        console.log(`    import { Prisma } from 'generated/prisma/client';`);
     }
 
     log('green', `\n🎉 [Success] Nest-Prisma scaffolding for ${dbChoice.toUpperCase()} completed successfully!`);
