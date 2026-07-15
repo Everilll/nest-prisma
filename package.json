@@ -2,12 +2,13 @@
   "name": "@averildwi/nest-prisma",
   "version": "1.0.7",
   "description": "An interactive CLI generator to scaffold Prisma ORM with flexible version handling (stable vs latest) for NestJS projects.",
-  "main": "index.js",
+  "main": "bin/generate-interactive.js",
   "bin": {
-    "nest-prisma": "./index.js"
+    "nest-prisma": "./bin/generate-interactive.js"
   },
   "files": [
-    "index.js",
+    "bin",
+    "src",
     "templates"
   ],
   "scripts": {
