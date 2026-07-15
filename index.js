@@ -214,6 +214,7 @@ async function generatePrismaInteractive() {
     }
 
     log('green', `\n🎉 [Success] Nest-Prisma scaffolding for ${dbChoice.toUpperCase()} completed successfully!`);
+    log('cyan', '📖 Full documentation: https://github.com/Everilll/nest-prisma\n');
 }
 
 generatePrismaInteractive().catch((err) => {
