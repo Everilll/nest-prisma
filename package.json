@@ -1,0 +1,24 @@
+{
+  "name": "@averildwi/nest-prisma",
+  "version": "1.0.4",
+  "description": "An interactive CLI generator to scaffold Prisma ORM with flexible version handling (stable vs latest) for NestJS projects.",
+  "main": "index.js",
+  "bin": {
+    "nest-prisma": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "templates"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "fs-extra": "^11.3.6",
+    "inquirer": "^9.0.0"
+  }
+}
